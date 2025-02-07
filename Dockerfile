@@ -10,7 +10,7 @@ COPY Makefile Makefile
 COPY *.go ./
 COPY go.mod go.mod
 COPY go.sum go.sum
-#COPY internal/ internal/
+COPY internal/ internal/
 RUN make test
 
 FROM test AS build

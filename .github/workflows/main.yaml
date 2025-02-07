@@ -45,6 +45,9 @@ jobs:
   image:
     needs: changes
     if: ${{ needs.changes.outputs.image == 'true' }}
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-images.yaml
 
   markdown:
