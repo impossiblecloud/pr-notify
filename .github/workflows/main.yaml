@@ -1,0 +1,53 @@
+# This is the main "router" for all GH workflows.
+# It call the right action depending of files being changed in the PR.
+
+name: main
+
+on:
+  pull_request:
+
+jobs:
+  # Detect changes
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+
+    # Set job outputs to values from changes step
+    outputs:
+      go: ${{ steps.changes.outputs.go }}
+      image: ${{ steps.changes.outputs.image }}
+      markdown: ${{ steps.changes.outputs.markdown }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            go:
+              - 'go.*'
+              - '*.go'
+              - 'internal/**'
+            image:
+              - 'go.*'
+              - '*.go'
+              - 'internal/**'
+              - 'Dockerfile'
+              - 'Makefile'
+            markdown:
+              - '**/*.md'
+              - '.github/**/*.md'
+
+  go:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    uses: ./.github/workflows/go-test.yaml
+
+  image:
+    needs: changes
+    if: ${{ needs.changes.outputs.image == 'true' }}
+    uses: ./.github/workflows/build-images.yaml
+
+  markdown:
+    needs: changes
+    if: ${{ needs.changes.outputs.markdown == 'true' }}
+    uses: ./.github/workflows/markdown-lint.yaml
