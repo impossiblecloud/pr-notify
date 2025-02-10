@@ -18,4 +18,8 @@ func TestLoadConfig(t *testing.T) {
 	if !config.PrNotifications[0].IncludeDrafts {
 		t.Error("Expected gh_pr_include_drafts=true")
 	}
+
+	if config.PrNotifications[0].Notifications.Slack.ChannelID != "ABC123000" {
+		t.Error("Did not find expected Slack channel ID in notification config")
+	}
 }

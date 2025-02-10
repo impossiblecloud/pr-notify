@@ -5,10 +5,20 @@ github_pr_notifications:
     gh_pr_labels:
       - enhancement
     gh_pr_include_drafts: true
-    schedule: "* * * * *"
+    # Mon-Fri every 2 hours during business hours
+    schedule: "00 10,12,14,16,18 * * 1-5"
+    notify:
+      slack:
+        channel_id: "ABC123000"
+        message_header: ":warning: Please review at your earliest convenience @some-group-handle"
 
   - gh_owner: my-org
     gh_repo: my-repo-2
     gh_pr_labels: []
     gh_pr_include_drafts: false
-    schedule: "*/2 * * * *"
+    # Mon-Fri every 30 hours during business hours
+    schedule: "*/30 10-18 * * 1-5"
+    notify:
+      slack:
+        channel_id: "DEF456000"
+        message_header: ":warning: Please review at your earliest convenience @some-group-handle"

@@ -14,6 +14,7 @@ import (
 	"github.com/impossiblecloud/pr-notify/internal/cfg"
 	"github.com/impossiblecloud/pr-notify/internal/gh"
 	"github.com/impossiblecloud/pr-notify/internal/metrics"
+	"github.com/impossiblecloud/pr-notify/internal/slack"
 	"github.com/robfig/cron/v3"
 )
 
@@ -60,26 +61,43 @@ func runMainWebServer(config cfg.AppConfig, listen string) {
 }
 
 // prNotificationsCall is basically our main loop call
-func prNotificationsCall(g *gh.Github, prn cfg.PrNotification) {
+func prNotificationsCall(g *gh.Github, s *slack.Slack, prn cfg.PrNotification) {
 	prs, err := g.GetPullRequests(prn)
 	if err != nil {
 		glog.Fatalf("Failed to pull PRs: %s", err.Error())
 	}
+
+	if len(prs) < 1 {
+		glog.V(6).Infof("No PRs found for repo %s/%s", prn.Owner, prn.Repo)
+		return
+	}
+
+	message := ""
+	if prn.Notifications.Slack.Header != "" {
+		message += prn.Notifications.Slack.Header + "\n"
+	}
+	message += fmt.Sprintf("Pull requests from %s/%s repository:\n", prn.Owner, prn.Repo)
+
 	for _, pr := range prs {
-		// TODO: this should be replaced with an actual notification
-		glog.Infof("PR-%d: %s %s", *pr.Number, *pr.Title, *pr.State)
+		glog.Infof("PR-%d: %s", *pr.Number, *pr.Title)
+		message += fmt.Sprintf("- %s - %s\n", *pr.HTMLURL, *pr.Title)
+	}
+
+	if err := s.SendMessage(prn, message); err != nil {
+		glog.Errorf("Failed to send message to slack: %s", err.Error())
 	}
 }
 
 func main() {
 	var listen, configFile string
-	var showVersion bool
+	var showVersion, slackDebug bool
 
 	// Init config
 	config := cfg.AppConfig{}
 
 	flag.StringVar(&configFile, "config", "/etc/pr-notify.yaml", "Config file in YAML format")
 	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
+	flag.BoolVar(&slackDebug, "slack-debug", false, "Slack API debug mode")
 	flag.StringVar(&listen, "listen", ":8765", "Address:port to listen on")
 	flag.Parse()
 
@@ -101,15 +119,18 @@ func main() {
 	cronJob := cron.New()
 	defer cronJob.Stop()
 
-	g := gh.Github{}
-	err = g.Init()
+	// Init clients
+	ghClient := gh.Github{}
+	err = ghClient.Init()
 	if err != nil {
 		glog.Fatalf("Failed to initialize Github Client: %s", err.Error())
 	}
+	slackClient := slack.Slack{}
+	slackClient.Init(slackDebug)
 
 	// Add cron job schedulers for all PR notification configs
 	for _, prn := range config.PrNotifications {
-		cronJob.AddFunc(prn.Schedule, func() { prNotificationsCall(&g, prn) })
+		cronJob.AddFunc(prn.Schedule, func() { prNotificationsCall(&ghClient, &slackClient, prn) })
 	}
 
 	cronJob.Start()
