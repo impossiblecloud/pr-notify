@@ -6,3 +6,7 @@ vendor
 
 # Ignore binary
 output/*
+
+# Tmp dev files
+.env
+.config.yaml

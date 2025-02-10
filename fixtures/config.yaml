@@ -1,0 +1,14 @@
+github_pr_notifications:
+
+  - gh_owner: my-org
+    gh_repo: my-repo-1
+    gh_pr_labels:
+      - enhancement
+    gh_pr_include_drafts: true
+    schedule: "* * * * *"
+
+  - gh_owner: my-org
+    gh_repo: my-repo-2
+    gh_pr_labels: []
+    gh_pr_include_drafts: false
+    schedule: "*/2 * * * *"
