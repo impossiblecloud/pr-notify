@@ -77,6 +77,7 @@ func (g *Github) GetPullRequests(prn cfg.PrNotification) ([]*github.PullRequest,
 		if !prn.IncludeDrafts && *pr.Draft {
 			continue
 		}
+		//glog.V(8).Infof("Got PR-%d %s: %s", *pr.Number, *pr.Title, *pr.State)
 		if labelsMatched(pr.Labels, prn.Labels) {
 			result = append(result, pr)
 		}

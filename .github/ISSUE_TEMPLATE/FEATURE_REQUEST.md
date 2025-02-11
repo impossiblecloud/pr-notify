@@ -17,7 +17,8 @@ Please describe what you envision the solution to this problem would look like.
 
 ## Alternatives Considered
 
-Please briefly describe which alternatives, if any, have been considered, including merits of alternate approaches and
+Please briefly describe which alternatives, if any, have been considered,
+including merits of alternate approaches and
 tradeoffs being made.
 
 ## Additional Context
