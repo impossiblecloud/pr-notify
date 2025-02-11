@@ -5,8 +5,10 @@ github_pr_notifications:
     gh_pr_labels:
       - enhancement
     gh_pr_include_drafts: true
+    gh_pr_ignore_approved: true
+    gh_pr_ignore_changes_requested: true
     # Mon-Fri every 2 hours during business hours
-    schedule: "00 10,12,14,16,18 * * 1-5"
+    schedule: "CRON_TZ=Europe/Berlin 00 10-18/2 * * 1-5"
     notify:
       slack:
         channel_id: "ABC123000"
@@ -15,9 +17,8 @@ github_pr_notifications:
   - gh_owner: my-org
     gh_repo: my-repo-2
     gh_pr_labels: []
-    gh_pr_include_drafts: false
     # Mon-Fri every 30 hours during business hours
-    schedule: "*/30 10-18 * * 1-5"
+    schedule: "CRON_TZ=Europe/Berlin */30 10-18 * * 1-5"
     notify:
       slack:
         channel_id: "DEF456000"

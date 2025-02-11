@@ -31,12 +31,14 @@ type Notification struct {
 
 // PrNotification is a struct for a single GH repo PRs notifications
 type PrNotification struct {
-	Owner         string       `yaml:"gh_owner"`
-	Labels        []string     `yaml:"gh_pr_labels"`
-	Repo          string       `yaml:"gh_repo"`
-	Schedule      string       `yaml:"schedule"`
-	IncludeDrafts bool         `yaml:"gh_pr_include_drafts"`
-	Notifications Notification `yaml:"notify"`
+	Owner                  string       `yaml:"gh_owner"`
+	Labels                 []string     `yaml:"gh_pr_labels"`
+	Repo                   string       `yaml:"gh_repo"`
+	Schedule               string       `yaml:"schedule"`
+	IncludeDrafts          bool         `yaml:"gh_pr_include_drafts"`
+	IgnoreApproved         bool         `yaml:"gh_pr_ignore_approved"`
+	IgnoreChangesRequested bool         `yaml:"gh_pr_ignore_changes_requested"`
+	Notifications          Notification `yaml:"notify"`
 }
 
 // LoadConfig loads config file
