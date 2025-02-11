@@ -77,9 +77,36 @@ func (g *Github) GetPullRequests(prn cfg.PrNotification) ([]*github.PullRequest,
 		if !prn.IncludeDrafts && *pr.Draft {
 			continue
 		}
-		//glog.V(8).Infof("Got PR-%d %s: %s", *pr.Number, *pr.Title, *pr.State)
+		glog.V(8).Infof("Checking PR-%d %q: %s", *pr.Number, *pr.Title, *pr.State)
+
 		if labelsMatched(pr.Labels, prn.Labels) {
-			result = append(result, pr)
+			addPR := true
+
+			// Ignore PRs that have APPROVED or CHANGES_REQUESTED reviews, if it's configured
+			if prn.IgnoreApproved || prn.IgnoreChangesRequested {
+				reviews, _, err := g.Client.PullRequests.ListReviews(context.Background(), prn.Owner, prn.Repo, *pr.Number, &github.ListOptions{})
+				if err != nil {
+					return result, err
+				}
+				for _, review := range reviews {
+					glog.V(10).Infof("Review %s: %s", *review.HTMLURL, *review.State)
+					if prn.IgnoreApproved && *review.State == "APPROVED" {
+						glog.V(8).Infof("Skipping PR-%d: %q, because it's APPROVED", *pr.Number, *pr.Title)
+						addPR = false
+						break
+					}
+					if prn.IgnoreChangesRequested && *review.State == "CHANGES_REQUESTED" {
+						glog.V(8).Infof("Skipping PR-%d: %q, because it's CHANGES_REQUESTED", *pr.Number, *pr.Title)
+						addPR = false
+						break
+					}
+				}
+			}
+
+			if addPR {
+				glog.V(8).Infof("Adding to notifications PR-%d: %q", *pr.Number, *pr.Title)
+				result = append(result, pr)
+			}
 		}
 	}
 
