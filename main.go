@@ -62,6 +62,8 @@ func runMainWebServer(config cfg.AppConfig, listen string) {
 
 // prNotificationsCall is basically our main loop call
 func prNotificationsCall(g *gh.Github, s *slack.Slack, prn cfg.PrNotification) {
+	glog.V(8).Infof("PR notification call start for %s/%s", prn.Owner, prn.Repo)
+
 	prs, err := g.GetPullRequests(prn)
 	if err != nil {
 		glog.Fatalf("Failed to pull PRs: %s", err.Error())
@@ -131,6 +133,7 @@ func main() {
 	// Add cron job schedulers for all PR notification configs
 	for _, prn := range config.PrNotifications {
 		cronJob.AddFunc(prn.Schedule, func() { prNotificationsCall(&ghClient, &slackClient, prn) })
+		glog.V(4).Infof("Added cronjob scheduler for %s/%s", prn.Owner, prn.Repo)
 	}
 
 	cronJob.Start()
