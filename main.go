@@ -61,7 +61,9 @@ func runMainWebServer(config cfg.AppConfig, listen string) {
 }
 
 // prNotificationsCall is basically our main loop call
-func prNotificationsCall(g *gh.Github, s *slack.Slack, prn cfg.PrNotification) {
+func prNotificationsCall(config *cfg.AppConfig, g *gh.Github, s *slack.Slack, prn cfg.PrNotification) {
+	glog.V(8).Infof("PR notification call start for %s/%s", prn.Owner, prn.Repo)
+
 	prs, err := g.GetPullRequests(prn)
 	if err != nil {
 		glog.Fatalf("Failed to pull PRs: %s", err.Error())
@@ -78,19 +80,62 @@ func prNotificationsCall(g *gh.Github, s *slack.Slack, prn cfg.PrNotification) {
 	}
 	message += fmt.Sprintf("Pull requests from %s/%s repository:\n", prn.Owner, prn.Repo)
 
+	// Prepare direct messages map
+	directMessages := make(map[string]string)
+
+	// Loop over all discovered PRs and compile messages
 	for _, pr := range prs {
-		glog.Infof("PR-%d: %s", *pr.Number, *pr.Title)
-		message += fmt.Sprintf("- %s - %s\n", *pr.HTMLURL, *pr.Title)
+		glog.V(10).Infof("Checking PR-%d: %s", *pr.Number, *pr.Title)
+		additionalInfo := ""
+
+		// Skip the PR is it does not match additional conditions
+		if !g.MatchesConditions(pr, prn) {
+			glog.V(8).Infof("PR-%d does not match conditions", *pr.Number)
+			continue
+		}
+
+		// Add PR to the assignee DM queue
+		if pr.Assignee != nil {
+			additionalInfo += fmt.Sprintf(" (assignee: %s)", *pr.Assignee.Login)
+			directMessages[*pr.Assignee.Login] += fmt.Sprintf("- You have a PR assigned: %s - %s\n", *pr.HTMLURL, *pr.Title)
+			glog.V(8).Infof("Added PR %s for assignee %q", *pr.HTMLURL, *pr.Assignee.Login)
+		}
+
+		// Add PR to the main message
+		message += fmt.Sprintf("- %s - %s%s\n", *pr.HTMLURL, *pr.Title, additionalInfo)
 	}
 
-	if err := s.SendMessage(prn, message); err != nil {
-		glog.Errorf("Failed to send message to slack: %s", err.Error())
+	// Send individual messages to assignees if configured
+	if prn.Notifications.Slack.NotifyAssignee {
+		for ghLogin, dm := range directMessages {
+			glog.V(8).Infof("Checking PR slack notifications created for %q", ghLogin)
+			if slackUID, ok := config.GetSlackUID(ghLogin); ok {
+				glog.V(6).Infof("Sending DM to %s (slack UID: %s)", ghLogin, slackUID)
+				message := ""
+				if prn.Notifications.Slack.Header != "" {
+					message += prn.Notifications.Slack.Header + "\n"
+				}
+				if err := s.DM(slackUID, message+dm); err != nil {
+					glog.Errorf("Failed to send DM to %s (slack UID: %s): %s", ghLogin, slackUID, err.Error())
+				}
+			} else {
+				glog.Warning("No Slack UID mapping found for GitHub user: ", ghLogin)
+			}
+		}
+	}
+
+	// Send summary message to the specified channel
+	if prn.Notifications.Slack.ChannelID != "" {
+		glog.V(6).Infof("Sending message to slack channel %q", prn.Notifications.Slack.ChannelID)
+		if err := s.SendMessage(prn, message); err != nil {
+			glog.Errorf("Failed to send message to slack: %s", err.Error())
+		}
 	}
 }
 
 func main() {
-	var listen, configFile string
-	var showVersion, slackDebug bool
+	var listen, configFile, ghUser, slackUser, slackChannel string
+	var showVersion, slackDebug, debugSlackToGithubUserMapping bool
 
 	// Init config
 	config := cfg.AppConfig{}
@@ -99,6 +144,10 @@ func main() {
 	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
 	flag.BoolVar(&slackDebug, "slack-debug", false, "Slack API debug mode")
 	flag.StringVar(&listen, "listen", ":8765", "Address:port to listen on")
+	flag.StringVar(&ghUser, "debug-gh-user", "", "GitHub user login to debug and pull info about and exit")
+	flag.StringVar(&slackUser, "debug-slack-user", "", "Slack user ID to debug and pull info about and exit")
+	flag.StringVar(&slackChannel, "debug-slack-channel", "", "Debug Slack users in channel and exit")
+	flag.BoolVar(&debugSlackToGithubUserMapping, "debug-slack-gh-users", false, "Debug Slack to GitHub user mapping and exit")
 	flag.Parse()
 
 	// Show and exit functions
@@ -121,17 +170,52 @@ func main() {
 
 	// Init clients
 	ghClient := gh.Github{}
+	glog.Info("Initializing Github client")
 	err = ghClient.Init()
 	if err != nil {
 		glog.Fatalf("Failed to initialize Github Client: %s", err.Error())
 	}
+
+	glog.Info("Initializing Slack client")
 	slackClient := slack.Slack{}
-	slackClient.Init(slackDebug)
+	err = slackClient.Init(slackDebug)
+	if err != nil {
+		glog.Fatalf("Failed to initialize Slack Client: %s", err.Error())
+	}
+
+	// Log debug info for a specific GitHub user and exit
+	if ghUser != "" {
+		ghClient.LogUserInfo(ghUser)
+		return
+	}
+
+	// Log debug info for a specific Slack user and exit
+	if slackUser != "" {
+		slackClient.LogUserInfo(slackUser)
+		return
+	}
+
+	// Log debug info about slack to GH user mappings
+	if debugSlackToGithubUserMapping {
+		slackClient.LogGithubSlackUserMappings()
+		return
+	}
+
+	// Log debug info about slack channel and exit
+	if slackChannel != "" {
+		slackClient.LogsUsersInChannel(slackChannel)
+		return
+	}
 
 	// Add cron job schedulers for all PR notification configs
-	for _, prn := range config.PrNotifications {
-		cronJob.AddFunc(prn.Schedule, func() { prNotificationsCall(&ghClient, &slackClient, prn) })
+	glog.Info("Starting cron job schedulers")
+	for id, prn := range config.PrNotifications {
+		cronJob.AddFunc(prn.Schedule, func() { prNotificationsCall(&config, &ghClient, &slackClient, prn) })
+		glog.Infof("Added cronjob scheduler %d for %s/%s", id, prn.Owner, prn.Repo)
 	}
+
+	// Start Slack to GitHub user mapping update loop
+	go slackClient.SlackToGithubUpdateLoop(&config)
 
 	cronJob.Start()
 	runMainWebServer(config, listen)

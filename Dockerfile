@@ -2,7 +2,7 @@
 # Simple tool to watch directory for new files and upload them to S3
 #
 
-FROM golang:1.23.6 AS test
+FROM golang:1.24.6 AS test
 WORKDIR /build
 ENV GOPATH=/go
 ENV PATH="$PATH:$GOPATH/bin"
@@ -20,8 +20,8 @@ ENV GOPATH=/go
 ENV PATH="$PATH:$GOPATH/bin"
 RUN make build
 
-# FROM gcr.io/distroless/base-debian11
-FROM alpine:3.21
+FROM alpine:3.22
 WORKDIR /
+RUN apk add --no-cache tzdata
 COPY --from=build /build/output/pr-notify /pr-notify
 ENTRYPOINT ["/pr-notify"]

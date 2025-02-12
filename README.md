@@ -48,3 +48,19 @@ github_pr_notifications:
         channel_id: "DEF456000"
         message_header: ":warning: Please review at your earliest convenience @some-group-handle"
 ```
+
+## Local development
+
+Build an image:
+
+```bash
+docker build . --tag pr-notify:latest
+```
+
+Prepare env variables in `.env` file and run the image:
+
+```bash
+docker run --rm -it --env GITHUB_APP_PRIVATE_KEY="$(cat /path/pr-notify.private-key.pem)" \
+  --env-file .env -v .config.yaml:/etc/pr-notify.yaml pr-notify:latest \
+  -logtostderr -v 8
+```

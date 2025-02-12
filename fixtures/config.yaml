@@ -1,3 +1,22 @@
+slack_config:
+  # Where to find users to match them to GH users, we'll build a mapping of
+  # GitHub users to Slack users based on this. This is needed for slack DM
+  # notifications for assigned and unattended PRs.
+  github_users_channels:
+    - id: C01234567 # some-channel
+      periodic_notifications:
+        notify_users: true # Whether to periodically notify users without GH info in this channel
+        schedule: "CRON_TZ=Europe/Berlin 00 11 * * 1-5" # schedule to ping users without GH info
+        message: |
+          This channel requires users to have GH login configured.
+          Please update your Slack profile with your GitHub username and URL.
+      message_reply_notifications:
+        notify_users: true # Whether to notify users without GH info when they post PR in the channel
+        message_regex: ".*https://github.com/impossiblecloud/infrastructure/pull/.*"
+        reply: "Please update your Slack profile with Github account info."
+        reply_in_thread: true
+  slack_users_pull_interval_seconds: 600 # how often to pull info from Slack and cache in memory
+
 github_pr_notifications:
 
   - gh_owner: my-org
@@ -7,6 +26,8 @@ github_pr_notifications:
     gh_pr_include_drafts: true
     gh_pr_ignore_approved: true
     gh_pr_ignore_changes_requested: true
+    gh_pr_conditions:
+      older_than_seconds: 3600
     # Mon-Fri every 2 hours during business hours
     schedule: "CRON_TZ=Europe/Berlin 00 10-18/2 * * 1-5"
     notify:
