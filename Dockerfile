@@ -20,8 +20,8 @@ ENV GOPATH=/go
 ENV PATH="$PATH:$GOPATH/bin"
 RUN make build
 
-# FROM gcr.io/distroless/base-debian11
 FROM alpine:3.21
 WORKDIR /
+RUN apk add --no-cache tzdata
 COPY --from=build /build/output/pr-notify /pr-notify
 ENTRYPOINT ["/pr-notify"]
