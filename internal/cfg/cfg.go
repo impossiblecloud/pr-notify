@@ -126,3 +126,13 @@ func (config *AppConfig) GetSlackUID(githubLogin string) (string, bool) {
 	}
 	return "", false
 }
+
+// GetGithubLogin returns GitHub login for a given Slack user ID
+func (config *AppConfig) GetGithubLogin(slackUID string) (string, bool) {
+	for ghLogin, sUID := range config.SlackToGithubUserMap {
+		if sUID == slackUID {
+			return ghLogin, true
+		}
+	}
+	return "", false
+}

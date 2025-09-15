@@ -12,6 +12,7 @@ COPY go.mod go.mod
 COPY go.sum go.sum
 COPY internal/ internal/
 COPY fixtures/ fixtures/
+COPY .git .git
 RUN make test
 
 FROM test AS build

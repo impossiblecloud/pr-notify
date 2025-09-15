@@ -19,7 +19,7 @@ import (
 )
 
 // Constants
-const version = "0.0.1"
+var Version string
 
 // Prometheus metrics handler
 func handleMetrics(config cfg.AppConfig) http.HandlerFunc {
@@ -35,7 +35,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	glog.V(10).Info("Got HTTP request for /")
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Up and running. Version: %s", version)
+	fmt.Fprintf(w, "Up and running.")
 }
 
 // Health handler
@@ -137,6 +137,10 @@ func main() {
 	var listen, configFile, ghUser, slackUser, slackChannel string
 	var showVersion, slackDebug, debugSlackToGithubUserMapping bool
 
+	if Version == "" {
+		Version = "unknown"
+	}
+
 	// Init config
 	config := cfg.AppConfig{}
 
@@ -152,10 +156,10 @@ func main() {
 
 	// Show and exit functions
 	if showVersion {
-		fmt.Printf("Version: %s\n", version)
+		fmt.Printf("Version: %s\n", Version)
 		os.Exit(0)
 	}
-	glog.V(4).Infof("Starting application. Version: %s", version)
+	glog.V(4).Infof("Starting application. Version: %s", Version)
 
 	err := config.LoadConfig(configFile)
 	if err != nil {
@@ -164,7 +168,7 @@ func main() {
 	glog.V(6).Infof("Loaded PR notifications: %+v", config.PrNotifications)
 
 	// Init metric and cron
-	config.Metrics = metrics.InitMetrics(version)
+	config.Metrics = metrics.InitMetrics(Version)
 	cronJob := cron.New()
 	defer cronJob.Stop()
 
@@ -216,6 +220,9 @@ func main() {
 
 	// Start Slack to GitHub user mapping update loop
 	go slackClient.SlackToGithubUpdateLoop(&config)
+
+	// Start Slack channel auto-reply loop
+	slackClient.SlackChannelAutoReplyLoop(&config)
 
 	cronJob.Start()
 	runMainWebServer(config, listen)

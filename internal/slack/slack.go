@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/impossiblecloud/pr-notify/internal/cfg"
 	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 )
 
@@ -49,6 +51,13 @@ func (s *Slack) Init(debug bool) error {
 		socketmode.OptionDebug(debug),
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
+
+	info, err := api.AuthTest()
+	if err != nil {
+		glog.Fatalf("Got error while running api.AuthTest(): %s", err.Error())
+	}
+
+	glog.V(8).Infof("Slack Debug: %+v", info)
 
 	return nil
 }
@@ -105,7 +114,7 @@ func (s *Slack) MakeGithubToSlackUserMap() (map[string]string, error) {
 
 // GetUserGithubLogin returns a github login for a Slack user based on custom fields
 func (s *Slack) GetUserGithubLogin(slackUserID string) (string, error) {
-	glog.V(8).Infof("Getting GitHub login for Slack user: %q", slackUserID)
+	glog.V(9).Infof("Getting GitHub login for Slack user: %q", slackUserID)
 	profile, err := s.Client.GetUserProfile(&slack.GetUserProfileParameters{
 		UserID: slackUserID,
 	})
@@ -124,7 +133,7 @@ func (s *Slack) GetUserGithubLogin(slackUserID string) (string, error) {
 
 // GetConversationMembers returns a list of slack users in a channel
 func (s *Slack) GetConversationMembers(channelID string) ([]string, error) {
-	glog.V(8).Infof("Getting conversation members for channel: %q", channelID)
+	glog.V(10).Infof("Getting conversation members for channel: %q", channelID)
 
 	users, _, err := s.Client.GetUsersInConversation(&slack.GetUsersInConversationParameters{
 		ChannelID: channelID,
@@ -140,7 +149,7 @@ func (s *Slack) GetConversationMembers(channelID string) ([]string, error) {
 // MakeGithubtoSlackUserMapInChannels builds a map of slack users found in the channel
 // with their github logins based on the info found in Slack custom profile fields
 func (s *Slack) MakeGithubToSlackUserMapInChannels(channelIDs []string) (map[string]string, error) {
-	glog.V(8).Infof("Building Slack to GitHub user map for channels: %v", channelIDs)
+	glog.V(10).Infof("Building Slack to GitHub user map for channels: %v", channelIDs)
 	userMap := make(map[string]string)
 	users := []string{}
 	for _, chID := range channelIDs {
@@ -185,6 +194,106 @@ func (s *Slack) SlackToGithubUpdateLoop(conf *cfg.AppConfig) {
 		}
 		conf.SlackToGithubUserMap = userMap
 		time.Sleep(time.Duration(conf.SlackConfig.SlackUsersPullIntervalSeconds) * time.Second)
+	}
+}
+
+// WatchChannelAndReply watches a Slack channel and replies to messages with PR links
+// if the user does not have GitHub info in their profile
+func (s *Slack) WatchChannelAndReply(ghuChannel cfg.GHUsersChannel, conf *cfg.AppConfig) {
+	glog.Infof("Starting to watch Slack channel %q for auto replies", ghuChannel.ID)
+	for evt := range s.Client.Events {
+		glog.Infof("Received Events API event type: %+v", evt.Type)
+		switch evt.Type {
+		case socketmode.EventTypeConnecting:
+			glog.Info("Connecting to Slack with Socket Mode...")
+		case socketmode.EventTypeConnectionError:
+			glog.Error("Connection failed. Retrying later...")
+		case socketmode.EventTypeConnected:
+			glog.Info("Connected to Slack with Socket Mode.")
+		case socketmode.EventTypeEventsAPI:
+			glog.V(8).Infof("Received Events API event type: %+v", evt.Type)
+			eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
+			if !ok {
+				glog.Errorf("Could not type cast the event to the EventsAPIEvent: %v\n", evt)
+				continue
+			}
+			s.Client.Ack(*evt.Request)
+
+			switch eventsAPIEvent.Type {
+			case slackevents.CallbackEvent:
+				innerEvent := eventsAPIEvent.InnerEvent
+				switch ev := innerEvent.Data.(type) {
+				case *slackevents.MessageEvent:
+					glog.V(8).Infof("Received message event: %+v", ev)
+					if ev.BotID != "" {
+						glog.V(10).Infof("Skipping bot message: %+v", ev)
+						continue
+					}
+
+					// Check messages that are not in Slack threads
+					if ev.ThreadTimeStamp == "" {
+						matched, err := regexp.MatchString(ghuChannel.MessageReplyNotifications.MessageRegex, ev.Text)
+						if err != nil {
+							glog.Errorf("Failed to match regex %q: %s", ghuChannel.MessageReplyNotifications.MessageRegex, err.Error())
+							continue
+						}
+						if matched {
+							glog.V(8).Infof("Message matches regex %q: %+v", ghuChannel.MessageReplyNotifications.MessageRegex, ev)
+							// Check memory cache first
+							if githubLogin, exists := conf.GetGithubLogin(ev.User); exists && githubLogin != "" {
+								glog.V(8).Infof("User %q has GitHub login %q in profile, not replying", ev.User, githubLogin)
+								continue
+							}
+							// Fetch user profile and check again
+							githubLogin, err := s.GetUserGithubLogin(ev.User)
+							if err != nil {
+								glog.Errorf("Failed to get GitHub login for user %q: %s", ev.User, err.Error())
+								continue
+							}
+							// Not github login found, reply to the user
+							if githubLogin == "" {
+								glog.V(8).Infof("User %q does not have GitHub login in profile, replying...", ev.User)
+								replyOptions := []slack.MsgOption{
+									slack.MsgOptionText(ghuChannel.MessageReplyNotifications.Reply, false),
+									slack.MsgOptionAsUser(true),
+									slack.MsgOptionLinkNames(true),
+								}
+								if ghuChannel.MessageReplyNotifications.ReplyInThread {
+									replyOptions = append(replyOptions, slack.MsgOptionTS(ev.TimeStamp))
+								}
+								// TODO: Uncomment to enable actual replies
+								glog.Infof("Replying in channel %q user %q", ev.Channel, ev.User)
+								// _, _, err := s.Client.PostMessage(ev.Channel, replyOptions...)
+								// if err != nil {
+								// 	glog.Errorf("Failed to post message to channel %q: %s", ev.Channel, err.Error())
+								// 	continue
+								// }
+							} else {
+								glog.V(8).Infof("Channel %q User %q has GitHub login %q in profile, not replying", ev.Channel, ev.User, githubLogin)
+							}
+						} else {
+							glog.V(10).Infof("Message does not match regex %q: %+v", ghuChannel.MessageReplyNotifications.MessageRegex, ev)
+						}
+					}
+				default:
+					glog.V(8).Infof("Unsupported inner event type: %T", innerEvent.Data)
+				}
+			default:
+				glog.V(8).Infof("Unsupported Events API event type: %v", eventsAPIEvent.Type)
+			}
+		default:
+			glog.V(8).Infof("Unsupported event type: %v", evt.Type)
+		}
+	}
+	glog.Infof("Exiting WatchChannelAndReply loop for channel %q", ghuChannel.ID)
+}
+
+// SlackChannelAutoReplyLoop starts a loop to watch configured channels and reply to messages
+func (s *Slack) SlackChannelAutoReplyLoop(conf *cfg.AppConfig) {
+	for _, ghUsersChannel := range conf.SlackConfig.GithubUsersChannels {
+		if ghUsersChannel.MessageReplyNotifications.NotifyUsers && ghUsersChannel.MessageReplyNotifications.MessageRegex != "" {
+			go s.WatchChannelAndReply(ghUsersChannel, conf)
+		}
 	}
 }
 
