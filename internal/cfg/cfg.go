@@ -2,7 +2,9 @@ package cfg
 
 import (
 	"os"
+	"regexp"
 
+	"github.com/golang/glog"
 	"github.com/impossiblecloud/pr-notify/internal/metrics"
 	"gopkg.in/yaml.v3"
 )
@@ -132,6 +134,25 @@ func (config *AppConfig) GetGithubLogin(slackUID string) (string, bool) {
 	for ghLogin, sUID := range config.SlackToGithubUserMap {
 		if sUID == slackUID {
 			return ghLogin, true
+		}
+	}
+	return "", false
+}
+
+// GetSlackMessageReply returns a reply message for a given Slack channel ID and message text
+func (config *AppConfig) GetSlackMessageReply(channelID, messageText string) (string, bool) {
+	for _, ghUsersChannel := range config.SlackConfig.GithubUsersChannels {
+		if ghUsersChannel.ID == channelID {
+			if ghUsersChannel.MessageReplyNotifications.NotifyUsers && ghUsersChannel.MessageReplyNotifications.MessageRegex != "" {
+				matched, err := regexp.MatchString(ghUsersChannel.MessageReplyNotifications.MessageRegex, messageText)
+				if err != nil {
+					glog.Errorf("Error matching regex %q: %s", ghUsersChannel.MessageReplyNotifications.MessageRegex, err.Error())
+					return "", false
+				}
+				if matched {
+					return ghUsersChannel.MessageReplyNotifications.Reply, ghUsersChannel.MessageReplyNotifications.ReplyInThread
+				}
+			}
 		}
 	}
 	return "", false

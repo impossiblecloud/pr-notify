@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -48,6 +49,8 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // Main web server
 func runMainWebServer(config cfg.AppConfig, listen string) {
+	glog.Infof("Starting main web server on %s", listen)
+
 	// Setup http router
 	router := mux.NewRouter().StrictSlash(true)
 
@@ -90,7 +93,7 @@ func prNotificationsCall(config *cfg.AppConfig, g *gh.Github, s *slack.Slack, pr
 
 		// Skip the PR is it does not match additional conditions
 		if !g.MatchesConditions(pr, prn) {
-			glog.V(8).Infof("PR-%d does not match conditions", *pr.Number)
+			glog.V(10).Infof("PR-%d does not match conditions", *pr.Number)
 			continue
 		}
 
@@ -141,6 +144,9 @@ func main() {
 		Version = "unknown"
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Init config
 	config := cfg.AppConfig{}
 
@@ -165,7 +171,10 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Failed to load config file %q: %s", configFile, err.Error())
 	}
+
+	// Some quick debug info
 	glog.V(6).Infof("Loaded PR notifications: %+v", config.PrNotifications)
+	glog.V(6).Infof("Loaded Slack config: %+v", config.SlackConfig)
 
 	// Init metric and cron
 	config.Metrics = metrics.InitMetrics(Version)
@@ -217,13 +226,17 @@ func main() {
 		cronJob.AddFunc(prn.Schedule, func() { prNotificationsCall(&config, &ghClient, &slackClient, prn) })
 		glog.Infof("Added cronjob scheduler %d for %s/%s", id, prn.Owner, prn.Repo)
 	}
+	cronJob.Start()
 
 	// Start Slack to GitHub user mapping update loop
 	go slackClient.SlackToGithubUpdateLoop(&config)
 
-	// Start Slack channel auto-reply loop
-	slackClient.SlackChannelAutoReplyLoop(&config)
+	// Start main web server in a separate goroutine
+	go runMainWebServer(config, listen)
 
-	cronJob.Start()
-	runMainWebServer(config, listen)
+	// Start Slack channel auto-reply loop and run the Slack SocketMode client blocking call
+	go slackClient.SlackSocketModeHandler(&config)
+	if err := slackClient.Client.RunContext(ctx); err != nil {
+		glog.Fatalf("Error running Slack socketmode: %v", err)
+	}
 }
