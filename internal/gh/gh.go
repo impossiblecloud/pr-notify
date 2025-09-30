@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/google/go-github/v69/github"
@@ -111,4 +112,30 @@ func (g *Github) GetPullRequests(prn cfg.PrNotification) ([]*github.PullRequest,
 	}
 
 	return result, nil
+}
+
+// MatchesConditions checks if a PR matches the conditions defined in the config
+func (g *Github) MatchesConditions(pr *github.PullRequest, prn cfg.PrNotification) bool {
+	if prn.Conditions.OlderThanSeconds > 0 {
+		createdAt := pr.CreatedAt.Time
+		prOlderThan := createdAt.Add(time.Duration(prn.Conditions.OlderThanSeconds) * time.Second)
+		isAfter := time.Now().After(prOlderThan)
+		if !isAfter {
+			return false
+		}
+	}
+	return true
+}
+
+// ------------------------ DEBUG STUFF BELOW ------------------------
+
+// LogUserInfo for debugging GH users
+func (g *Github) LogUserInfo(githubLogin string) {
+	glog.Infof("Logging info for GitHub user: %q", githubLogin)
+	user, _, err := g.Client.Users.Get(context.Background(), githubLogin)
+	if err != nil {
+		glog.Errorf("Failed to get user info for %q: %s", githubLogin, err.Error())
+		return
+	}
+	glog.Infof("User info for %q: %+v", githubLogin, user)
 }
