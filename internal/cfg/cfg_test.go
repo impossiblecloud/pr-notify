@@ -85,3 +85,31 @@ func TestGetSlackUID(t *testing.T) {
 		t.Errorf("Did not expect to find Slack user ID for GitHub login 'nonexistent-gh-user', but found one")
 	}
 }
+
+func TestPrConditions(t *testing.T) {
+	config := AppConfig{}
+	err := config.LoadConfig("../../fixtures/config.yaml")
+	if err != nil {
+		t.Errorf("Failed to load ./fixtures/config.yaml: %s", err.Error())
+	}
+
+	if len(config.PrNotifications) < 1 {
+		t.Errorf("Length of github_pr_notifications is %d, but it should be not empty", len(config.PrNotifications))
+	}
+
+	conditions := config.PrNotifications[0].Conditions
+	if conditions.OlderThanSeconds != 3600 {
+		t.Errorf("Expected gh_pr_conditions.older_than_seconds=3600, but got %d", conditions.OlderThanSeconds)
+	}
+
+	expectedLabels := []string{"WIP", "do not merge"}
+	if len(conditions.DoesNotHaveLabels) != len(expectedLabels) {
+		t.Errorf("Expected gh_pr_conditions.does_not_have_labels length=%d, but got %d", len(expectedLabels), len(conditions.DoesNotHaveLabels))
+	} else {
+		for i, label := range expectedLabels {
+			if conditions.DoesNotHaveLabels[i] != label {
+				t.Errorf("Expected gh_pr_conditions.does_not_have_labels[%d]=%q, but got %q", i, label, conditions.DoesNotHaveLabels[i])
+			}
+		}
+	}
+}

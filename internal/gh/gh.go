@@ -17,6 +17,7 @@ type Github struct {
 	Client *github.Client
 }
 
+// labelsMatched checks if all labels in filterLabels are present in PR labels
 func labelsMatched(prLabels []*github.Label, filterLabels []string) bool {
 	matched := 0
 
@@ -80,6 +81,7 @@ func (g *Github) GetPullRequests(prn cfg.PrNotification) ([]*github.PullRequest,
 		}
 		glog.V(8).Infof("Checking PR-%d %q: %s", *pr.Number, *pr.Title, *pr.State)
 
+		// If ALL labels in prn.Labels are present on the PR, include it
 		if labelsMatched(pr.Labels, prn.Labels) {
 			addPR := true
 
@@ -121,6 +123,13 @@ func (g *Github) MatchesConditions(pr *github.PullRequest, prn cfg.PrNotificatio
 		prOlderThan := createdAt.Add(time.Duration(prn.Conditions.OlderThanSeconds) * time.Second)
 		isAfter := time.Now().After(prOlderThan)
 		if !isAfter {
+			// PR is not older than the specified time
+			return false
+		}
+	}
+	if len(prn.Conditions.DoesNotHaveLabels) > 0 {
+		if labelsMatched(pr.Labels, prn.Conditions.DoesNotHaveLabels) {
+			// If the PR has any of the labels in DoesNotHaveLabels, it doesn't match the conditions
 			return false
 		}
 	}

@@ -21,6 +21,7 @@ github_pr_notifications:
 
   - gh_owner: my-org
     gh_repo: my-repo-1
+    # PR must have ALL labels in this list to match
     gh_pr_labels:
       - enhancement
     gh_pr_include_drafts: true
@@ -28,6 +29,9 @@ github_pr_notifications:
     gh_pr_ignore_changes_requested: true
     gh_pr_conditions:
       older_than_seconds: 3600
+      does_not_have_labels:
+        - "WIP"
+        - "do not merge"
     # Mon-Fri every 2 hours during business hours
     schedule: "CRON_TZ=Europe/Berlin 00 10-18/2 * * 1-5"
     notify:

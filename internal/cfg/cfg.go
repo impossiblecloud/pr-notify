@@ -79,7 +79,8 @@ type Notification struct {
 
 // PrConditions struct describes additional conditions for PRs
 type PrConditions struct {
-	OlderThanSeconds int `yaml:"older_than_seconds"`
+	OlderThanSeconds  int      `yaml:"older_than_seconds"`
+	DoesNotHaveLabels []string `yaml:"does_not_have_labels"`
 }
 
 // PrNotification is a struct for a single GH repo PRs notifications

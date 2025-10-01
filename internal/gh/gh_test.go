@@ -66,3 +66,33 @@ func TestMatchesConditions_ZeroOlderThanSeconds(t *testing.T) {
 		t.Error("Expected MatchesConditions to return true when OlderThanSeconds is zero")
 	}
 }
+
+func TestMatchesConditions_DoesNotHaveLabels(t *testing.T) {
+	g := &Github{}
+
+	label := "WIP"
+	pr := &github.PullRequest{
+		CreatedAt: &github.Timestamp{Time: time.Now().Add(-2 * time.Hour)},
+		Labels: []*github.Label{
+			{Name: &label},
+		},
+	}
+
+	prNoLabels := &github.PullRequest{
+		CreatedAt: &github.Timestamp{Time: time.Now().Add(-2 * time.Hour)},
+	}
+
+	prn := cfg.PrNotification{
+		Conditions: cfg.PrConditions{
+			DoesNotHaveLabels: []string{"WIP"},
+		},
+	}
+
+	if g.MatchesConditions(pr, prn) {
+		t.Error("Expected MatchesConditions to return false for PR with labels in DoesNotHaveLabels")
+	}
+
+	if !g.MatchesConditions(prNoLabels, prn) {
+		t.Error("Expected MatchesConditions to return true for PR without labels")
+	}
+}
